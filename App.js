@@ -1,10 +1,13 @@
-import React, { useState, useEffect } from 'react'; 
+import React, { useState, useEffect,  useRef, useMemo } from 'react'; 
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { TouchableOpacity } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
-import Video from 'react-native-video';
+import { Video } from 'expo-av';
+import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
+import * as VideoThumbnails from 'expo-video-thumbnails';
+import { Asset } from 'expo-asset';
 
 import { 
   View, 
@@ -261,7 +264,7 @@ function Home() {
           showsHorizontalScrollIndicator={false}
           
           renderItem={({ item: service }) => (
-            <Pressable onPress={() => {navigation.navigate('prepararpedido', { service }) }}>
+            <Pressable onPress={() => {navigation.navigate('Prepararpedido', { service }) }}>
             <View style={styles.serviceCard}>
               <Image source={service.image} style={styles.serviceIcon} />
               <Text style={styles.serviceLabel}>{service.name}</Text>
@@ -280,7 +283,7 @@ function Home() {
   ); 
 }
 
-function prepararpedido({ route, navigation }) {
+function Prepararpedido({ route, navigation }) {
   
   const { service } = route.params;
   return (
@@ -499,59 +502,102 @@ function Cliente({ navigation }) {
   );
 }
 
-import { Ionicons } from '@expo/vector-icons';
+
 // Outras telas e navegação
+const { height } = Dimensions.get('window');
+
+const videos = [
+  { id: '1', category: 'Cuidados Estéticos', uri: require('./assets/anuncio1.mp4'), professional: 'Maria Cabeleira' },
+  { id: '2', category: 'Reformas', uri: require('./assets/servente.mp4'), professional: 'Pedro Pedreiro' },
+  { id: '3', category: 'Cuidados Estéticos', uri: require('./assets/servente.mp4'), professional: 'Ana Manicure' },
+  { id: '4', category: 'Educação', uri: require('./assets/servente.mp4'), professional: 'João Professor' },
+  { id: '5', category: 'Saúde', uri: require('./assets/servente.mp4'), professional: 'Dra. Maria Nutricionista' },
+];
+
 function Explorar() {
-  
-  const { height, width } = Dimensions.get('window');
-  const videosData = [
-    { id: '1', category: 'Reformas, Reparos e Gerais', url: './assets/trabalhando.mp4' },
-    { id: '2', category: 'Técnologia e Educação', url: './assets/servente.mp4' },
-   
-  ];
-  
-  const [selectedCategory, setSelectedCategory] = useState('All');
-  const filteredVideos = videosData.filter(video =>
-    selectedCategory === 'All' ? true : video.category === selectedCategory
-  );
-  
-  return (
-    <View style={styles.container3}>
-      {/* Header */}
-      <View style={styles.header2}>
-        <Text style={styles.title2}>SkillShow</Text>
-        <TouchableOpacity style={styles.filterButton}>
-          <Ionicons name="filter" size={24} color="white" />
-          <Text style={styles.filterText}>Filtro</Text>
-        </TouchableOpacity>
+  const [categoriaSelecionada, setCategoriaSelecionada] = useState('Todas');
+  const [loadedVideos, setLoadedVideos] = useState([]);
+  const [currentVideo, setCurrentVideo] = useState(null);
+  const videoRefs = useRef({});
+
+  useEffect(() => {
+    async function loadAssets() {
+      const loadedUris = await Promise.all(
+        videos.map(async (video) => {
+          const asset = await Asset.fromModule(video.uri).downloadAsync();
+          return { ...video, uri: asset.uri };
+        })
+      );
+      setLoadedVideos(loadedUris);
+    }
+    loadAssets();
+  }, []);
+
+  const videosFiltrados = useMemo(() => {
+    return categoriaSelecionada === 'Todas'
+      ? loadedVideos
+      : loadedVideos.filter(video => video.category === categoriaSelecionada);
+  }, [categoriaSelecionada, loadedVideos]);
+
+  const viewabilityConfig = { viewAreaCoveragePercentThreshold: 50 };
+  const onViewableItemsChanged = useRef(({ viewableItems }) => {
+    if (viewableItems.length > 0) {
+      setCurrentVideo(viewableItems[0].index);
+    }
+  }).current;
+
+  const renderItem = ({ item, index }) => (
+    <View style={styles.videoContainer}>
+      <Video
+        ref={(ref) => (videoRefs.current[index] = ref)}
+        source={{ uri: item.uri }}
+        style={styles.video}
+        resizeMode="cover"
+        shouldPlay={currentVideo === index}
+        isLooping
+        onPlaybackStatusUpdate={(status) => {
+          if (status.didJustFinish) {
+            setCurrentVideo(null);
+          }
+        }}
+      />
+      <View style={styles.overlay}>
+        <Text style={styles.professionalName}>{item.professional}</Text>
+        <Text style={styles.category}>{item.category}</Text>
       </View>
-
-      {/* Video Feed */}
-      <FlatList
-      data={filteredVideos}
-      keyExtractor={(item) => item.id}
-      renderItem={({ item }) => (
-        <View style={styles.videoContainer}>
-          <Video
-            source={{ uri: item.url }}
-            style={styles.video}
-            resizeMode="cover"
-            repeat
-            controls={false}
-            paused={false}
-          />
-        </View>
-      )}
-      snapToInterval={Dimensions.get('window').height} // Rola exatamente uma tela
-      decelerationRate="fast"
-      pagingEnabled
-      showsVerticalScrollIndicator={false}
-    />
-
-
     </View>
   );
-};
+
+  return (
+    <View style={styles.container}>
+      <Picker
+        selectedValue={categoriaSelecionada}
+        onValueChange={(itemValue) => setCategoriaSelecionada(itemValue)}
+        style={styles.pickerContainer}
+      >
+        <Picker.Item label="Todas" value="Todas" />
+        <Picker.Item label="Reparos" value="Reparos" />
+        <Picker.Item label="Cuidados Estéticos" value="Cuidados Estéticos" />
+        <Picker.Item label="Educação" value="Educação" />
+        <Picker.Item label="Saúde" value="Saúde" />
+      </Picker>
+      <FlatList
+        data={videosFiltrados}
+        keyExtractor={(item) => item.id}
+        initialNumToRender={2}
+        maxToRenderPerBatch={2}
+        windowSize={3}
+        snapToInterval={height}
+        decelerationRate="fast"
+        pagingEnabled
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={viewabilityConfig}
+        renderItem={renderItem}
+      />
+    </View>
+  );
+}
+
 
 
 function Pedidos() {
@@ -1010,7 +1056,7 @@ export default function App() {
         <Stack.Screen name="AppTabsProfissional" component={AppTabsProfissional} />
         <Stack.Screen name="Cliente" component={Cliente} />
         <Stack.Screen name="App" component={AppTabs} />
-        <Stack.Screen name="prepararpedido" component={prepararpedido} />
+        <Stack.Screen name="Prepararpedido" component={Prepararpedido} />
         
       </Stack.Navigator>
       <StatusBar backgroundColor="#f9f9f9" barStyle="dark-content" />

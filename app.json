@@ -25,7 +25,9 @@
       "favicon": "./assets/Icon_/home/espectro/Downloads/Icon.png"
     },
     "plugins": [
-      "expo-font"
+      "expo-font",
+      "expo-video",
+      "expo-asset"
     ]
   }
 }
